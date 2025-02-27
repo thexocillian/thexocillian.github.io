@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>Bar & Ring Pendulum with User Input</title>
+  <title>Bar & Ring Pendulum with Dotted Trail</title>
   <style>
     body {
       margin: 0;
@@ -20,7 +20,7 @@
       position: absolute;
       top: 10px;
       left: 10px;
-      z-index: 9999;
+      z-index: 1000;
       background: rgba(0, 0, 0, 0.5);
       padding: 10px;
       border-radius: 4px;
@@ -51,7 +51,8 @@
           World = Matter.World,
           Bodies = Matter.Bodies,
           Constraint = Matter.Constraint,
-          Body = Matter.Body;
+          Body = Matter.Body,
+          Vector = Matter.Vector;
 
     // Create the engine and world
     const engine = Engine.create();
@@ -70,6 +71,12 @@
     });
     Render.run(render);
 
+    // Ensure the Matter.js canvas is on top
+    render.canvas.style.position = 'absolute';
+    render.canvas.style.top = '0';
+    render.canvas.style.left = '0';
+    render.canvas.style.zIndex = '10';
+
     // Create the runner
     const runner = Runner.create();
     Runner.run(runner, engine);
@@ -83,15 +90,15 @@
     // 2) Bar settings
     const barWidth = 25;
     const barHeight = 300;
-    // The bar pivot is 3/4 of the way down from the top
-    // So the bar's center is offset 50px above the anchor
+    // The bar pivot is 3/4 of the way down from the top,
+    // so the bar's center is offset 50px above the anchor.
     const barCenterX = anchor.x;
     const barCenterY = anchor.y - 50;
 
     const bar = Bodies.rectangle(barCenterX, barCenterY, barWidth, barHeight, {
       collisionFilter: { group: noCollisionGroup },
       density: 0.008,
-      frictionAir: 0.0001,  // Further reduced friction for longer swing
+      frictionAir: 0.0001,  // Very low friction for a long swing
       restitution: 0.2,
       render: {
         fillStyle: '#FFFF00' // Yellow bar
@@ -103,7 +110,7 @@
     const barPivot = Constraint.create({
       pointA: anchor,
       bodyB: bar,
-      pointB: { x: 0, y: 75 }, // 50px below the bar's center (pivot point)
+      pointB: { x: 0, y: 40 }, // Pivot attached 40px below the bar's center
       length: 0,
       stiffness: 1,
       render: {
@@ -122,7 +129,7 @@
     const ring = Bodies.circle(ringCenterX, ringCenterY, ringRadius, {
       collisionFilter: { group: noCollisionGroup },
       density: 0.003,
-      frictionAir: 0.0001,  // Reduced frictionAir for the ring
+      frictionAir: 0.0001,  // Very low friction for the ring
       restitution: 0.2,
       render: {
         fillStyle: 'transparent', // No fill
@@ -135,9 +142,9 @@
     // 5) Constraint: bar bottom -> ring top edge
     const ringJoint = Constraint.create({
       bodyA: bar,
-      pointA: { x: 0, y: barHeight / 2 }, // bottom of the bar
+      pointA: { x: 0, y: barHeight / 2 }, // Bottom of the bar
       bodyB: ring,
-      pointB: { x: 0, y: -ringRadius },   // top edge of the ring
+      pointB: { x: 0, y: -ringRadius },   // Top edge of the ring
       length: 0,
       stiffness: 1,
       render: {
@@ -164,28 +171,89 @@
     // Helper function to set the bar's angle (in degrees)
     function setBarAngleDegrees(deg) {
       const radians = deg * (Math.PI / 180);
-      // Reset the bar's angle to 0 first so the rotation is absolute
       Body.setAngle(bar, 0);
       Body.rotate(bar, radians);
     }
 
-    // Apply the angle when the button is clicked
     applyAngleBtn.addEventListener('click', () => {
       const deg = parseFloat(angleInput.value) || 0;
       setBarAngleDegrees(deg);
     });
 
-    // Set an initial angle on page load (from the default input value, now 120°)
     window.addEventListener('load', () => {
       const deg = parseFloat(angleInput.value) || 0;
       setBarAngleDegrees(deg);
     });
 
-    // 8) Adjust canvas on window resize
     window.addEventListener('resize', () => {
       render.canvas.width = window.innerWidth;
       render.canvas.height = window.innerHeight;
     });
+
+    // ===== Dotted Trail Code =====
+
+    // Create an overlay canvas to draw the dotted trail.
+    // We set its z-index high so the trail is visible over the simulation.
+    const overlayCanvas = document.createElement('canvas');
+    overlayCanvas.id = 'overlay';
+    overlayCanvas.style.position = 'absolute';
+    overlayCanvas.style.top = '0';
+    overlayCanvas.style.left = '0';
+    overlayCanvas.style.pointerEvents = 'none';
+    overlayCanvas.style.zIndex = '20';
+    overlayCanvas.style.backgroundColor = 'transparent';
+    document.body.appendChild(overlayCanvas);
+
+    const overlayCtx = overlayCanvas.getContext('2d');
+
+    function resizeOverlayCanvas() {
+      overlayCanvas.width = window.innerWidth;
+      overlayCanvas.height = window.innerHeight;
+    }
+    resizeOverlayCanvas();
+    window.addEventListener('resize', resizeOverlayCanvas);
+
+    // We'll store each dot in an array with its creation frame and hue.
+    let dots = [];
+    let frameCounter = 0;
+    const dotInterval = 5; // record a dot every 5 frames
+    const maxDotAge = 600; // dots older than 600 frames will be removed
+
+    function updateDots() {
+      frameCounter++;
+      // Every few frames, compute the world position of the spot on the ring.
+      // Define the "spot" as the point opposite the fulcrum:
+      // The ring is attached at its top edge (local { x: 0, y: -ringRadius }),
+      // so the opposite point is at local { x: 0, y: ringRadius }.
+      if (frameCounter % dotInterval === 0) {
+        const localSpot = { x: 0, y: ringRadius };
+        const rotatedSpot = Vector.rotate(localSpot, ring.angle);
+        const worldSpot = Vector.add(ring.position, rotatedSpot);
+        // Compute a hue based on the frameCounter (e.g. cycle through 360 degrees)
+        const hue = frameCounter % 360;
+        dots.push({ x: worldSpot.x, y: worldSpot.y, created: frameCounter, hue: hue });
+      }
+      // Clear overlay canvas so we redraw all dots.
+      overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+      // Draw each dot with an opacity that fades with age.
+      for (let i = dots.length - 1; i >= 0; i--) {
+        const dot = dots[i];
+        const age = frameCounter - dot.created;
+        if (age > maxDotAge) {
+          dots.splice(i, 1);
+          continue;
+        }
+        // Opacity decreases linearly with age.
+        const alpha = 1 - age / maxDotAge;
+        overlayCtx.beginPath();
+        overlayCtx.arc(dot.x, dot.y, 2, 0, 2 * Math.PI);
+        // Use HSL so the hue gradually changes.
+        overlayCtx.fillStyle = `hsla(${dot.hue}, 100%, 50%, ${alpha})`;
+        overlayCtx.fill();
+      }
+      requestAnimationFrame(updateDots);
+    }
+    updateDots();
   </script>
 </body>
 </html>
