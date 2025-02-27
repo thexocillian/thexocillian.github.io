@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Bar & Ring Pendulum with User Input</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: #000; /* Black background */
+      font-family: sans-serif;
+      color: #fff; /* White text for UI */
+    }
+    canvas {
+      display: block;
+      background: #000;
+    }
+    /* UI controls */
+    #controls {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      z-index: 9999;
+      background: rgba(0, 0, 0, 0.5);
+      padding: 10px;
+      border-radius: 4px;
+    }
+    #controls input {
+      width: 60px;
+      margin-right: 10px;
+    }
+    #controls button {
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div id="controls">
+    <label for="initialAngle">Initial Angle (°): </label>
+    <input id="initialAngle" type="number" value="120" step="1" />
+    <button id="applyAngle">Apply Angle</button>
+  </div>
+
+  <!-- Include Matter.js from a CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+  <script>
+    // Matter.js module aliases
+    const Engine = Matter.Engine,
+          Render = Matter.Render,
+          Runner = Matter.Runner,
+          World = Matter.World,
+          Bodies = Matter.Bodies,
+          Constraint = Matter.Constraint,
+          Body = Matter.Body;
+
+    // Create the engine and world
+    const engine = Engine.create();
+    const world = engine.world;
+
+    // Create the renderer with a black background
+    const render = Render.create({
+      element: document.body,
+      engine: engine,
+      options: {
+        width: window.innerWidth,
+        height: window.innerHeight,
+        background: '#000', // Black canvas background
+        wireframes: false
+      }
+    });
+    Render.run(render);
+
+    // Create the runner
+    const runner = Runner.create();
+    Runner.run(runner, engine);
+
+    // Optional: separate collision group so bar and ring don't collide
+    const noCollisionGroup = Body.nextGroup(true);
+
+    // 1) Fixed anchor for the bar's pivot (near top-center)
+    const anchor = { x: window.innerWidth / 2, y: 300 };
+
+    // 2) Bar settings
+    const barWidth = 25;
+    const barHeight = 300;
+    // The bar pivot is 3/4 of the way down from the top
+    // So the bar's center is offset 50px above the anchor
+    const barCenterX = anchor.x;
+    const barCenterY = anchor.y - 50;
+
+    const bar = Bodies.rectangle(barCenterX, barCenterY, barWidth, barHeight, {
+      collisionFilter: { group: noCollisionGroup },
+      density: 0.008,
+      frictionAir: 0.0001,  // Further reduced friction for longer swing
+      restitution: 0.2,
+      render: {
+        fillStyle: '#FFFF00' // Yellow bar
+      }
+    });
+    World.add(world, bar);
+
+    // 3) Constraint: anchor -> bar pivot
+    const barPivot = Constraint.create({
+      pointA: anchor,
+      bodyB: bar,
+      pointB: { x: 0, y: 75 }, // 50px below the bar's center (pivot point)
+      length: 0,
+      stiffness: 1,
+      render: {
+        strokeStyle: '#555',
+        lineWidth: 2
+      }
+    });
+    World.add(world, barPivot);
+
+    // 4) Ring settings
+    const ringRadius = 90; // Larger ring
+    // Position the ring so its top edge meets the bar's bottom.
+    const ringCenterX = anchor.x;
+    const ringCenterY = barCenterY + (barHeight / 2) + ringRadius;
+
+    const ring = Bodies.circle(ringCenterX, ringCenterY, ringRadius, {
+      collisionFilter: { group: noCollisionGroup },
+      density: 0.003,
+      frictionAir: 0.0001,  // Reduced frictionAir for the ring
+      restitution: 0.2,
+      render: {
+        fillStyle: 'transparent', // No fill
+        strokeStyle: '#FF0000',   // Red ring outline
+        lineWidth: 14             // Thicker ring outline
+      }
+    });
+    World.add(world, ring);
+
+    // 5) Constraint: bar bottom -> ring top edge
+    const ringJoint = Constraint.create({
+      bodyA: bar,
+      pointA: { x: 0, y: barHeight / 2 }, // bottom of the bar
+      bodyB: ring,
+      pointB: { x: 0, y: -ringRadius },   // top edge of the ring
+      length: 0,
+      stiffness: 1,
+      render: {
+        strokeStyle: '#555',
+        lineWidth: 2
+      }
+    });
+    World.add(world, ringJoint);
+
+    // 6) Invisible ground (optional)
+    const ground = Bodies.rectangle(
+      window.innerWidth / 2,
+      window.innerHeight + 50,
+      window.innerWidth,
+      100,
+      { isStatic: true, render: { visible: false } }
+    );
+    World.add(world, ground);
+
+    // 7) User input for initial angle
+    const angleInput = document.getElementById('initialAngle');
+    const applyAngleBtn = document.getElementById('applyAngle');
+
+    // Helper function to set the bar's angle (in degrees)
+    function setBarAngleDegrees(deg) {
+      const radians = deg * (Math.PI / 180);
+      // Reset the bar's angle to 0 first so the rotation is absolute
+      Body.setAngle(bar, 0);
+      Body.rotate(bar, radians);
+    }
+
+    // Apply the angle when the button is clicked
+    applyAngleBtn.addEventListener('click', () => {
+      const deg = parseFloat(angleInput.value) || 0;
+      setBarAngleDegrees(deg);
+    });
+
+    // Set an initial angle on page load (from the default input value, now 120°)
+    window.addEventListener('load', () => {
+      const deg = parseFloat(angleInput.value) || 0;
+      setBarAngleDegrees(deg);
+    });
+
+    // 8) Adjust canvas on window resize
+    window.addEventListener('resize', () => {
+      render.canvas.width = window.innerWidth;
+      render.canvas.height = window.innerHeight;
+    });
+  </script>
+</body>
+</html>
